@@ -1,0 +1,17 @@
+# mass-download
+
+A learning project to reimplement an existing threaded mass-download tool.
+
+## Current Status
+
+* Reads in list of URLs from file
+* Downloads them all sequentially
+* Writes them out to a directory
+
+## Next Steps
+
+* Download files in parallel
+* Package files to ZIP archive
+* Handle errors
+* Log downloads
+* Write idiomatic tests
