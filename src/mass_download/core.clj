@@ -1,28 +1,9 @@
 (ns mass-download.core)
-(use '[clojure.string :only (join split)])
-(defn urls-from-file
-  ([file]
-    (fn [action]
-      (with-open [rdr (clojure.java.io/reader file)]
-        (dorun (map action (line-seq rdr)))
-      )
-    )
-  )
-)
 
-(defn mass-download
-  "Download many files and pass them to a handler."
-  ([url-source url-downloader file-acceptor url-to-path]
-    (url-source (fn [url]
-      (url-downloader url (fn [url file] 
-        (file-acceptor (url-to-path url) file)
-      ))
-    ))
-  )
-)
+(use '[clojure.string :only (join split)])
 
 (defn http-download
-  ([url file-acceptor]
+  ([file-acceptor url]
     (file-acceptor url (slurp url))))
 
 (defn only-basename
@@ -30,12 +11,22 @@
     (.getName (clojure.java.io/file url))))
 
 (defn in-dir
-  ([dir file-fn]
+  ([dir]
     (fn [fname]
-      (join "/" [dir (file-fn fname)]))))
+      (join "/" [dir fname]))))
 
-(defn -main [] 
-  (mass-download (urls-from-file "urls.txt")
+(defn mass-download 
+  [url-file fetch-fn name-fn output-fn]
+  (let [url-file "urls.txt"
+        fetch-fn  http-download
+        output-fn spit
+        name-fn   (comp (in-dir "downloaded") only-basename)
+        write-out (fn [url data] (output-fn (name-fn url) data))] 
+    (with-open [rdr (clojure.java.io/reader url-file)]
+      (dorun (map (partial fetch-fn write-out) (line-seq rdr))))))
+
+(defn -main []  
+  (mass-download "urls.txt"
                  http-download
-                 spit
-                 (in-dir "downloaded" only-basename)))
+                 (comp (in-dir "downloaded") only-basename)
+                 spit))
