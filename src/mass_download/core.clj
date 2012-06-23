@@ -1,17 +1,28 @@
-(ns mass-download.core)
-
-(use '[clojure.string :only (join split)])
-
-(def log println)
+(ns mass-download.core
+  (:use    [clojure.string :only [join split blank?]])
+  (:import [java.util.concurrent LinkedBlockingQueue Executors]))
 
 (defn http-download
   ([file-acceptor url]
-    (log "downloading" url)
     (file-acceptor url (slurp url))))
 
-(defn store-file
+(defn package-with-worker [action]
+  (let [
+    queue (LinkedBlockingQueue.)
+    worker (fn []
+      (loop [entry (. queue take)]
+        (when-not (blank? (first entry))
+          (apply action entry)
+          (recur (. queue take)))))
+    worker-thread (Thread. worker)]
+    (do
+      (. worker-thread start)
+      (fn
+        ([kw] (. queue put ["" ""]))
+        ([filename data] (. queue put [filename data]))))))
+
+(defn store-to-file
   ([filename data]
-    (log "saving" filename)
     (spit filename data)))
 
 (defn only-basename
@@ -28,10 +39,19 @@
   (let [url-file "urls.txt"
         write-out (fn [url data] (output-fn (name-fn url) data))] 
     (with-open [rdr (clojure.java.io/reader url-file)]
-      (dorun (map (partial fetch-fn write-out) (line-seq rdr))))))
+      (let [tasks (map 
+                    (fn [t] 
+                      (fn []
+                        ((partial fetch-fn write-out) t)))
+                    (line-seq rdr))
+            pool  (Executors/newFixedThreadPool 10)]
+        (.invokeAll pool tasks)
+        (output-fn :done)
+        (.shutdown pool)))))
 
-(defn -main []  
-  (mass-download "urls.txt"
-                 http-download
-                 (comp (in-dir "downloaded") only-basename)
-                 store-file))
+(defn -main []
+  (let [packager (package-with-worker store-to-file)]
+    (mass-download "urls.txt"
+                   http-download
+                   (comp (in-dir "downloaded") only-basename)
+                   packager)))
